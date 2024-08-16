@@ -1,12 +1,14 @@
-import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } from 'discord.js';
-import fetch from 'node-fetch';
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const fetch = require('node-fetch');
 
+// Create a new Discord client instance
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, // Intent for receiving guild events
     ],
 });
 
+// Command registration
 const commands = [
     new SlashCommandBuilder()
         .setName('link')
@@ -24,6 +26,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
     try {
         console.log('Started refreshing application (/) commands.');
 
+        // Register the command globally
         await rest.put(
             Routes.applicationCommands(process.env.CLIENT_ID),
             { body: commands },
@@ -35,10 +38,12 @@ const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
     }
 })();
 
+// Event listener for when the bot is ready
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
 });
 
+// Event listener for interaction (slash commands)
 client.on('interactionCreate', async interaction => {
     if (!interaction.isCommand()) return;
 
@@ -50,6 +55,7 @@ client.on('interactionCreate', async interaction => {
 
         await interaction.reply(`Please add the following sentence to your Roblox "About" section: \n\n"${uniqueSentence}"`);
 
+        // Wait some time (optional) and then check the profile
         setTimeout(async () => {
             const response = await fetch(`https://users.roblox.com/v1/users/search?keyword=${robloxUsername}`);
             const data = await response.json();
@@ -67,8 +73,9 @@ client.on('interactionCreate', async interaction => {
             } else {
                 await interaction.followUp('Roblox user not found. Please check the username and try again.');
             }
-        }, 10000);
+        }, 10000); // Wait 10 seconds before checking
     }
 });
+
 
 client.login(process.env.TOKEN);
