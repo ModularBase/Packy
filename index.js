@@ -1,5 +1,6 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const fetch = require('node-fetch');
+const http = require('http'); // Required to bind to a port
 
 // Create a new Discord client instance
 const client = new Client({
@@ -8,7 +9,7 @@ const client = new Client({
     ],
 });
 
-// Command registration
+// Define the command
 const commands = [
     new SlashCommandBuilder()
         .setName('link')
@@ -20,13 +21,13 @@ const commands = [
 ]
     .map(command => command.toJSON());
 
-const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+const rest = new REST({ version: '10' }).setToken(proccess.env.TOKEN);
 
+// Register the command globally
 (async () => {
     try {
         console.log('Started refreshing application (/) commands.');
 
-        // Register the command globally
         await rest.put(
             Routes.applicationCommands(process.env.CLIENT_ID),
             { body: commands },
@@ -55,7 +56,6 @@ client.on('interactionCreate', async interaction => {
 
         await interaction.reply(`Please add the following sentence to your Roblox "About" section: \n\n"${uniqueSentence}"`);
 
-        // Wait some time (optional) and then check the profile
         setTimeout(async () => {
             const response = await fetch(`https://users.roblox.com/v1/users/search?keyword=${robloxUsername}`);
             const data = await response.json();
@@ -73,9 +73,18 @@ client.on('interactionCreate', async interaction => {
             } else {
                 await interaction.followUp('Roblox user not found. Please check the username and try again.');
             }
-        }, 10000); // Wait 10 seconds before checking
+        }, 10000);
     }
 });
 
+// Bind to a port to avoid the "Port scan timeout" error
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot is running\n');
+}).listen(PORT, () => {
+    console.log(`Server is listening on port ${PORT}`);
+});
 
-client.login(process.env.TOKEN);
+// Log in to Discord with your bot's token
+client.login(proccess.env.TOKEN);
