@@ -1,6 +1,6 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const fetch = require('node-fetch');
-const http = require('http'); // Required to bind to a port
+const http = require('http');
 
 // Create a new Discord client instance
 const client = new Client({
@@ -21,9 +21,8 @@ const commands = [
 ]
     .map(command => command.toJSON());
 
-const rest = new REST({ version: '10' }).setToken(proccess.env.TOKEN);
+const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
-// Register the command globally
 (async () => {
     try {
         console.log('Started refreshing application (/) commands.');
@@ -87,4 +86,4 @@ http.createServer((req, res) => {
 });
 
 // Log in to Discord with your bot's token
-client.login(proccess.env.TOKEN);
+client.login(process.env.TOKEN);
