@@ -1,12 +1,14 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const fetch = require('node-fetch');
 const http = require('http');
+const { createClient } = require('@supabase/supabase-js');
+
+// Initialize Supabase client
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 // Create a new Discord client instance
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds, // Intent for receiving guild events
-    ],
+    intents: [GatewayIntentBits.Guilds],
 });
 
 // Define the command
@@ -53,26 +55,72 @@ client.on('interactionCreate', async interaction => {
         const robloxUsername = options.getString('username');
         const uniqueSentence = `Linking my Discord: ${user.tag}`;
 
-        await interaction.reply(`Please add the following sentence to your Roblox "About" section: \n\n"${uniqueSentence}"`);
+        // Create an embed message
+        const embed = new EmbedBuilder()
+            .setColor(0x0099ff)
+            .setTitle('Account Linking')
+            .setDescription(`Please add the following sentence to your Roblox "About" section and then confirm.\n\n**Sentence:** \n"${uniqueSentence}"\n\nOnce you've added it, press the Confirm button below.`)
+            .setFooter({ text: 'You have 10 minutes to complete this action.' });
 
-        setTimeout(async () => {
-            const response = await fetch(`https://users.roblox.com/v1/users/search?keyword=${robloxUsername}`);
-            const data = await response.json();
+        // Create buttons for confirmation
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('confirm')
+                    .setLabel('Confirm')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('cancel')
+                    .setLabel('Cancel')
+                    .setStyle(ButtonStyle.Secondary),
+            );
 
-            if (data.data && data.data.length > 0) {
-                const userId = data.data[0].id;
-                const profileResponse = await fetch(`https://users.roblox.com/v1/users/${userId}`);
-                const profileData = await profileResponse.json();
+        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 
-                if (profileData.description && profileData.description.includes(uniqueSentence)) {
-                    await interaction.followUp(`Success! Your account has been linked to ${robloxUsername}.`);
+        const filter = i => i.customId === 'confirm' || i.customId === 'cancel';
+        const collector = interaction.channel.createMessageComponentCollector({ filter, time: 600000 });
+
+        collector.on('collect', async i => {
+            if (i.customId === 'confirm') {
+                await i.deferUpdate();
+
+                const response = await fetch(`https://users.roblox.com/v1/users/search?keyword=${robloxUsername}`);
+                const data = await response.json();
+
+                if (data.data && data.data.length > 0) {
+                    const userId = data.data[0].id;
+                    const profileResponse = await fetch(`https://users.roblox.com/v1/users/${userId}`);
+                    const profileData = await profileResponse.json();
+
+                    if (profileData.description && profileData.description.includes(uniqueSentence)) {
+                        // Store the linked account in Supabase
+                        const { error } = await supabase
+                            .from('linked_accounts')
+                            .insert([
+                                { discord_id: user.id, roblox_username: robloxUsername }
+                            ]);
+
+                        if (error) {
+                            await i.followUp({ content: 'There was an error storing your linked account information. Please try again later.', ephemeral: true });
+                        } else {
+                            await i.followUp({ content: `Success! Your Discord account has been linked to Roblox account: ${robloxUsername}.`, ephemeral: true });
+                        }
+                    } else {
+                        await i.followUp({ content: 'The sentence was not found in your "About" section. Please make sure it was added correctly.', ephemeral: true });
+                    }
                 } else {
-                    await interaction.followUp('The sentence was not found in your "About" section. Please make sure it was added correctly.');
+                    await i.followUp({ content: 'Roblox user not found. Please check the username and try again.', ephemeral: true });
                 }
-            } else {
-                await interaction.followUp('Roblox user not found. Please check the username and try again.');
+            } else if (i.customId === 'cancel') {
+                await i.update({ content: 'Linking process has been cancelled.', components: [], ephemeral: true });
             }
-        }, 10000);
+        });
+
+        collector.on('end', collected => {
+            if (!collected.size) {
+                interaction.followUp({ content: 'Linking process timed out.', ephemeral: true });
+            }
+        });
     }
 });
 
