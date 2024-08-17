@@ -25,6 +25,19 @@ const commands = [
 
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
+// Function to generate a random sentence
+function generateRandomSentence() {
+    const subjects = ['The cat', 'A dog', 'My friend', 'An elephant', 'The sun', 'A bird'];
+    const verbs = ['jumps over', 'runs around', 'flies above', 'sits on', 'looks at', 'hides behind'];
+    const objects = ['the fence', 'the tree', 'the house', 'a car', 'the sky', 'a rock'];
+
+    const subject = subjects[Math.floor(Math.random() * subjects.length)];
+    const verb = verbs[Math.floor(Math.random() * verbs.length)];
+    const object = objects[Math.floor(Math.random() * objects.length)];
+
+    return `${subject} ${verb} ${object}.`;
+}
+
 (async () => {
     try {
         console.log('Started refreshing application (/) commands.');
@@ -53,7 +66,7 @@ client.on('interactionCreate', async interaction => {
 
     if (commandName === 'link') {
         const robloxUsername = options.getString('username');
-        const uniqueSentence = `Linking my Discord: ${user.tag}`;
+        const uniqueSentence = generateRandomSentence();
 
         // Create an embed message
         const embed = new EmbedBuilder()
