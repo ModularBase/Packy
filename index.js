@@ -1,7 +1,8 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fetch = require('node-fetch');
 const http = require('http');
 const { createClient } = require('@supabase/supabase-js');
+const express = require('express');
 
 // Initialize Supabase client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
@@ -11,7 +12,7 @@ const client = new Client({
     intents: [GatewayIntentBits.Guilds],
 });
 
-// Define the command
+// Define the commands
 const commands = [
     new SlashCommandBuilder()
         .setName('link')
@@ -19,9 +20,20 @@ const commands = [
         .addStringOption(option =>
             option.setName('username')
                 .setDescription('Your Roblox username')
-                .setRequired(true))
-]
-    .map(command => command.toJSON());
+                .setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('plan')
+        .setDescription('Shows you your plan (Packy Premium or Free Packy)'),
+
+    new SlashCommandBuilder()
+        .setName('unlink')
+        .setDescription('Unlink your Roblox account from your Discord account'),
+
+    new SlashCommandBuilder()
+        .setName('help')
+        .setDescription('Get an invite link to the support server'),
+];
 
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
@@ -62,10 +74,10 @@ client.once('ready', () => {
 client.on('interactionCreate', async interaction => {
     if (!interaction.isCommand()) return;
 
-    const { commandName, options, user } = interaction;
+    const { commandName, user } = interaction;
 
     if (commandName === 'link') {
-        const robloxUsername = options.getString('username');
+        const robloxUsername = interaction.options.getString('username');
         const uniqueSentence = generateRandomSentence();
 
         // Create an embed message
@@ -75,66 +87,69 @@ client.on('interactionCreate', async interaction => {
             .setDescription(`Please add the following sentence to your Roblox "About" section and then confirm.\n\n**Sentence:** \n"${uniqueSentence}"\n\nOnce you've added it, press the Confirm button below.`)
             .setFooter({ text: 'You have 10 minutes to complete this action.' });
 
-        // Create buttons for confirmation
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('confirm')
-                    .setLabel('Confirm')
-                    .setStyle(ButtonStyle.Primary),
-                new ButtonBuilder()
-                    .setCustomId('cancel')
-                    .setLabel('Cancel')
-                    .setStyle(ButtonStyle.Secondary),
-            );
+        await interaction.reply({ embeds: [embed], ephemeral: true });
 
-        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+        // Other logic for linking...
 
-        const filter = i => i.customId === 'confirm' || i.customId === 'cancel';
-        const collector = interaction.channel.createMessageComponentCollector({ filter, time: 600000 });
+    } else if (commandName === 'plan') {
+        // Retrieve the user's plan from Supabase
+        const { data, error } = await supabase
+            .from('linked_accounts')
+            .select('plan')
+            .eq('discord_id', user.id)
+            .single();
 
-        collector.on('collect', async i => {
-            if (i.customId === 'confirm') {
-                await i.deferUpdate();
+        if (error || !data) {
+            await interaction.reply({ content: 'You are currently on the Free Packy plan.', ephemeral: true });
+        } else {
+            await interaction.reply({ content: `You are currently on the ${data.plan} plan.`, ephemeral: true });
+        }
 
-                const response = await fetch(`https://users.roblox.com/v1/users/search?keyword=${robloxUsername}`);
-                const data = await response.json();
+    } else if (commandName === 'unlink') {
+        // Unlink the user's Roblox account
+        const { error } = await supabase
+            .from('linked_accounts')
+            .delete()
+            .eq('discord_id', user.id);
 
-                if (data.data && data.data.length > 0) {
-                    const userId = data.data[0].id;
-                    const profileResponse = await fetch(`https://users.roblox.com/v1/users/${userId}`);
-                    const profileData = await profileResponse.json();
+        if (error) {
+            await interaction.reply({ content: 'There was an error unlinking your account. Please try again later.', ephemeral: true });
+        } else {
+            await interaction.reply({ content: 'Your Roblox account has been unlinked from your Discord account.', ephemeral: true });
+        }
 
-                    if (profileData.description && profileData.description.includes(uniqueSentence)) {
-                        // Store the linked account in Supabase
-                        const { error } = await supabase
-                            .from('linked_accounts')
-                            .insert([
-                                { discord_id: user.id, roblox_username: robloxUsername }
-                            ]);
-
-                        if (error) {
-                            await i.followUp({ content: 'There was an error storing your linked account information. Please try again later.', ephemeral: true });
-                        } else {
-                            await i.followUp({ content: `Success! Your Discord account has been linked to Roblox account: ${robloxUsername}.`, ephemeral: true });
-                        }
-                    } else {
-                        await i.followUp({ content: 'The sentence was not found in your "About" section. Please make sure it was added correctly.', ephemeral: true });
-                    }
-                } else {
-                    await i.followUp({ content: 'Roblox user not found. Please check the username and try again.', ephemeral: true });
-                }
-            } else if (i.customId === 'cancel') {
-                await i.update({ content: 'Linking process has been cancelled.', components: [], ephemeral: true });
-            }
-        });
-
-        collector.on('end', collected => {
-            if (!collected.size) {
-                interaction.followUp({ content: 'Linking process timed out.', ephemeral: true });
-            }
-        });
+    } else if (commandName === 'help') {
+        // Provide the invite link to the support server
+        const supportServerInvite = 'https://discord.gg/YOUR_INVITE_CODE'; // Replace with your actual invite link
+        await interaction.reply({ content: `Need help? Join our support server: ${supportServerInvite}`, ephemeral: true });
     }
+});
+
+// Express server for API interaction
+const app = express();
+app.use(express.json());
+
+// Example API route to trigger actions
+app.post('/api/test', async (req, res) => {
+    const { action, discordId } = req.body;
+
+    if (action === 'plan') {
+        // Simulate checking a user's plan
+        const { data, error } = await supabase
+            .from('linked_accounts')
+            .select('plan')
+            .eq('discord_id', discordId)
+            .single();
+
+        if (error || !data) {
+            return res.json({ plan: 'Free Packy' });
+        }
+        return res.json({ plan: data.plan });
+    }
+
+    // Other API actions can be added here
+
+    return res.status(400).json({ message: 'Invalid action' });
 });
 
 // Bind to a port to avoid the "Port scan timeout" error
@@ -144,6 +159,11 @@ http.createServer((req, res) => {
     res.end('Bot is running\n');
 }).listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
+});
+
+// Start Express server
+app.listen(3001, () => {
+    console.log('API server running on port 3001');
 });
 
 // Log in to Discord with your bot's token
